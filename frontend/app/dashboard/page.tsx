@@ -20,10 +20,17 @@ import {
   BarChart,
   Bar,
 } from "recharts"
-import { doc, getDoc, collection, addDoc } from "firebase/firestore"
+import { doc, getDoc, collection, addDoc, setDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
-import { TrendingUp, Shield, Target, Download, Lightbulb } from "lucide-react"
+import { TrendingUp, Shield, Target, Download, Lightbulb, Settings } from "lucide-react"
 import { Navigation } from "@/components/navigation"
+import { useSearchParams } from "next/navigation"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Slider } from "@/components/ui/slider"
+import { useToast } from "@/hooks/use-toast"
+import { PlanNameDialog } from "@/components/plan-name-dialog"
 
 interface UserProfile {
   salary: string
@@ -49,20 +56,44 @@ export default function DashboardPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [recommendation, setRecommendation] = useState<InvestmentRecommendation | null>(null)
   const [loading, setLoading] = useState(true)
+  const [editMode, setEditMode] = useState(false)
+  const [editedProfile, setEditedProfile] = useState<UserProfile | null>(null)
+  const searchParams = useSearchParams()
+  const planId = searchParams.get("plan")
+  const { toast } = useToast()
+  const [showPlanDialog, setShowPlanDialog] = useState(false)
 
   useEffect(() => {
     const fetchUserData = async () => {
       if (!user) return
 
       try {
-        const userDoc = await getDoc(doc(db, "users", user.uid))
-        if (userDoc.exists()) {
-          const userData = userDoc.data() as UserProfile
-          setProfile(userData)
+        // If planId is provided, load specific recommendation
+        if (planId) {
+          const planDoc = await getDoc(doc(db, "recommendations", planId))
+          if (planDoc.exists()) {
+            const planData = planDoc.data()
+            setRecommendation(planData.recommendation)
+            // Also fetch user profile for context
+            const userDoc = await getDoc(doc(db, "users", user.uid))
+            if (userDoc.exists()) {
+              const userData = userDoc.data() as UserProfile
+              setProfile(userData)
+              setEditedProfile(userData)
+            }
+          }
+        } else {
+          // Normal flow - load user profile and generate recommendation
+          const userDoc = await getDoc(doc(db, "users", user.uid))
+          if (userDoc.exists()) {
+            const userData = userDoc.data() as UserProfile
+            setProfile(userData)
+            setEditedProfile(userData)
 
-          // Generate AI recommendation based on profile
-          const aiRecommendation = generateAIRecommendation(userData)
-          setRecommendation(aiRecommendation)
+            // Generate AI recommendation based on profile
+            const aiRecommendation = generateAIRecommendation(userData)
+            setRecommendation(aiRecommendation)
+          }
         }
       } catch (error) {
         console.error("Error fetching user data:", error)
@@ -72,7 +103,7 @@ export default function DashboardPage() {
     }
 
     fetchUserData()
-  }, [user])
+  }, [user, planId])
 
   const generateAIRecommendation = (profile: UserProfile): InvestmentRecommendation => {
     const riskLevel = profile.riskTolerance
@@ -135,7 +166,7 @@ export default function DashboardPage() {
     }
   }
 
-  const saveRecommendation = async () => {
+  const saveRecommendation = async (planName: string) => {
     if (!user || !recommendation) return
 
     try {
@@ -143,11 +174,51 @@ export default function DashboardPage() {
         userId: user.uid,
         recommendation,
         createdAt: new Date(),
-        title: `Investment Plan - ${new Date().toLocaleDateString()}`,
+        title: planName,
       })
-      alert("Recommendation saved successfully!")
+
+      toast({
+        title: "Investment plan saved successfully!",
+        description: `"${planName}" has been added to your history.`,
+      })
     } catch (error) {
       console.error("Error saving recommendation:", error)
+      toast({
+        title: "Error saving plan",
+        description: "Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleProfileUpdate = async () => {
+    if (!user || !editedProfile) return
+
+    try {
+      await setDoc(doc(db, "users", user.uid), {
+        ...editedProfile,
+        email: user.email,
+        name: user.displayName,
+        updatedAt: new Date(),
+        onboardingCompleted: true,
+      })
+
+      setProfile(editedProfile)
+      const newRecommendation = generateAIRecommendation(editedProfile)
+      setRecommendation(newRecommendation)
+      setEditMode(false)
+
+      toast({
+        title: "Profile updated successfully!",
+        description: "Your investment recommendations have been refreshed.",
+      })
+    } catch (error) {
+      console.error("Error updating profile:", error)
+      toast({
+        title: "Error updating profile",
+        description: "Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -181,10 +252,105 @@ export default function DashboardPage() {
       <Navigation />
 
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Investment Dashboard</h1>
-          <p className="text-gray-400">Your personalized AI-driven investment recommendations</p>
+        <div className="mb-8 flex justify-between items-center">
+          <div>
+            <h1 className="text-4xl font-bold mb-2">Investment Dashboard</h1>
+            <p className="text-gray-400">Your personalized AI-driven investment recommendations</p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => setEditMode(!editMode)}
+            className="border-white/20 hover:bg-white/10 bg-transparent"
+          >
+            <Settings className="w-4 h-4 mr-2" />
+            {editMode ? "Cancel Edit" : "Edit Goals"}
+          </Button>
         </div>
+
+        {/* Edit Profile Section */}
+        {editMode && editedProfile && (
+          <Card className="bg-white/5 border-white/10 mb-8">
+            <CardHeader>
+              <CardTitle>Edit Your Financial Profile</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <Label htmlFor="edit-salary">Annual Salary ($)</Label>
+                  <Input
+                    id="edit-salary"
+                    type="number"
+                    value={editedProfile.salary}
+                    onChange={(e) => setEditedProfile({ ...editedProfile, salary: e.target.value })}
+                    className="bg-white/5 border-white/20"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-currentSavings">Current Savings ($)</Label>
+                  <Input
+                    id="edit-currentSavings"
+                    type="number"
+                    value={editedProfile.currentSavings}
+                    onChange={(e) => setEditedProfile({ ...editedProfile, currentSavings: e.target.value })}
+                    className="bg-white/5 border-white/20"
+                  />
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <Label htmlFor="edit-monthlyInvestment">Monthly Investment Budget ($)</Label>
+                  <Input
+                    id="edit-monthlyInvestment"
+                    type="number"
+                    value={editedProfile.monthlyInvestment}
+                    onChange={(e) => setEditedProfile({ ...editedProfile, monthlyInvestment: e.target.value })}
+                    className="bg-white/5 border-white/20"
+                  />
+                </div>
+                <div>
+                  <Label>Risk Tolerance (1-10)</Label>
+                  <Slider
+                    value={[editedProfile.riskTolerance]}
+                    onValueChange={(value) => setEditedProfile({ ...editedProfile, riskTolerance: value[0] })}
+                    max={10}
+                    min={1}
+                    step={1}
+                    className="w-full mt-2"
+                  />
+                  <div className="text-center text-primary font-semibold mt-1">{editedProfile.riskTolerance}</div>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-investmentGoals">Investment Goals</Label>
+                <Textarea
+                  id="edit-investmentGoals"
+                  value={editedProfile.investmentGoals}
+                  onChange={(e) => setEditedProfile({ ...editedProfile, investmentGoals: e.target.value })}
+                  className="bg-white/5 border-white/20 min-h-[100px]"
+                  placeholder="Describe your updated financial goals..."
+                />
+              </div>
+
+              <div className="flex space-x-4">
+                <Button onClick={handleProfileUpdate} className="bg-primary hover:bg-primary/90 text-black">
+                  Update Profile & Generate New Plan
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setEditMode(false)
+                    setEditedProfile(profile)
+                  }}
+                  className="border-white/20 hover:bg-white/10 bg-transparent"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Key Metrics */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">
@@ -368,7 +534,7 @@ export default function DashboardPage() {
         </Tabs>
 
         <div className="flex justify-center space-x-4 mt-8">
-          <Button onClick={saveRecommendation} className="bg-primary hover:bg-primary/90 text-black">
+          <Button onClick={() => setShowPlanDialog(true)} className="bg-primary hover:bg-primary/90 text-black">
             Save This Plan
           </Button>
           <Button variant="outline" className="border-white/20 hover:bg-white/10 bg-transparent">
@@ -376,6 +542,13 @@ export default function DashboardPage() {
             Export PDF
           </Button>
         </div>
+
+        <PlanNameDialog
+          open={showPlanDialog}
+          onOpenChange={setShowPlanDialog}
+          onSave={saveRecommendation}
+          defaultName={`Investment Plan - ${new Date().toLocaleDateString()}`}
+        />
       </div>
     </div>
   )

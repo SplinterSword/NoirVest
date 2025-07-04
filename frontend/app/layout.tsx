@@ -9,7 +9,7 @@ import { AuthProvider } from "@/components/auth-provider"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "NoirVest",
+  title: "Smart Investment Advisor",
   description: "AI-powered investment recommendations tailored to your financial goals",
     generator: 'v0.dev'
 }

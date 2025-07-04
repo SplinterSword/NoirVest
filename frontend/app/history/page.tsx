@@ -5,10 +5,12 @@ import { useAuth } from "@/components/auth-provider"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { collection, query, where, orderBy, getDocs } from "firebase/firestore"
+import { collection, query, where, orderBy, getDocs, deleteDoc, doc as firestoreDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { Navigation } from "@/components/navigation"
-import { Calendar, TrendingUp, Download, Eye } from "lucide-react"
+import { Calendar, TrendingUp, Download, Eye, Trash2 } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog"
 
 interface SavedRecommendation {
   id: string
@@ -25,6 +27,9 @@ export default function HistoryPage() {
   const { user } = useAuth()
   const [recommendations, setRecommendations] = useState<SavedRecommendation[]>([])
   const [loading, setLoading] = useState(true)
+  const { toast } = useToast()
+
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, planId: "", planTitle: "" })
 
   useEffect(() => {
     const fetchRecommendations = async () => {
@@ -58,6 +63,27 @@ export default function HistoryPage() {
 
     fetchRecommendations()
   }, [user])
+
+  const handleDeletePlan = async () => {
+    try {
+      await deleteDoc(firestoreDoc(db, "recommendations", deleteDialog.planId))
+
+      // Remove from local state
+      setRecommendations((prev) => prev.filter((rec) => rec.id !== deleteDialog.planId))
+
+      toast({
+        title: "Plan deleted successfully",
+        description: `"${deleteDialog.planTitle}" has been removed from your history.`,
+      })
+    } catch (error) {
+      console.error("Error deleting plan:", error)
+      toast({
+        title: "Error deleting plan",
+        description: "Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
 
   if (loading) {
     return (
@@ -121,7 +147,12 @@ export default function HistoryPage() {
                   </div>
 
                   <div className="flex space-x-2">
-                    <Button variant="outline" size="sm" className="border-white/20 hover:bg-white/10 bg-transparent">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-white/20 hover:bg-white/10 bg-transparent"
+                      onClick={() => (window.location.href = `/dashboard?plan=${rec.id}`)}
+                    >
                       <Eye className="w-4 h-4 mr-2" />
                       View Details
                     </Button>
@@ -129,12 +160,27 @@ export default function HistoryPage() {
                       <Download className="w-4 h-4 mr-2" />
                       Export PDF
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-red-500/50 hover:bg-red-500/10 bg-transparent text-red-400 hover:text-red-300"
+                      onClick={() => setDeleteDialog({ open: true, planId: rec.id, planTitle: rec.title })}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
         )}
+        <DeleteConfirmationDialog
+          open={deleteDialog.open}
+          onOpenChange={(open) => setDeleteDialog((prev) => ({ ...prev, open }))}
+          onConfirm={handleDeletePlan}
+          planName={deleteDialog.planTitle}
+        />
       </div>
     </div>
   )

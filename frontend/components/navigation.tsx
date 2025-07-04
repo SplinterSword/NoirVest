@@ -29,6 +29,7 @@ export function Navigation() {
   const navItems = [
     { href: "/dashboard", label: "Dashboard", icon: Home },
     { href: "/history", label: "History", icon: History },
+    { href: "/settings", label: "Settings", icon: User },
   ]
 
   return (
