@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   PieChart,
   Pie,
@@ -20,11 +21,11 @@ import {
   BarChart,
   Bar,
 } from "recharts"
-import { doc, getDoc, collection, addDoc, setDoc } from "firebase/firestore"
+import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, addDoc, setDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
-import { TrendingUp, Shield, Target, Download, Lightbulb, Settings } from "lucide-react"
+import { TrendingUp, Shield, Target, Download, Lightbulb, Settings, AlertCircle, RefreshCw } from "lucide-react"
 import { Navigation } from "@/components/navigation"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -40,10 +41,27 @@ interface UserProfile {
   currentSavings: string
   investmentHorizon: string
   monthlyInvestment: string
+  employmentStatus: string
+  dependents: string
+  debtAmount: string
+  emergencyFund: string
+  investmentExperience: string
+  email?: string
+  name?: string
+}
+
+interface AssetAllocation {
+  ticker: string
+  name: string
+  type: 'Stock' | 'Bond' | 'ETF' | 'Mutual Fund' | 'Index Fund' | 'Crypto' | 'Commodity'
+  weight: number
+  color: string
+  sector?: string
+  exchange?: string
 }
 
 interface InvestmentRecommendation {
-  assetAllocation: Array<{ name: string; value: number; color: string }>
+  assetAllocation: AssetAllocation[]
   projectedGrowth: Array<{ year: number; value: number }>
   riskAnalysis: Array<{ category: string; score: number }>
   explanation: string
@@ -52,65 +70,101 @@ interface InvestmentRecommendation {
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth()
+  const { user, loading: authLoading, error: authError } = useAuth()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [recommendation, setRecommendation] = useState<InvestmentRecommendation | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [editMode, setEditMode] = useState(false)
   const [editedProfile, setEditedProfile] = useState<UserProfile | null>(null)
   const searchParams = useSearchParams()
+  const router = useRouter()
   const planId = searchParams.get("plan")
   const { toast } = useToast()
   const [showPlanDialog, setShowPlanDialog] = useState(false)
 
-  useEffect(() => {
-    const fetchUserData = async () => {
-      if (!user) return
+  const fetchUserData = async () => {
+    if (authLoading) return
 
-      try {
-        // If planId is provided, load specific recommendation
+    if (authError || !user) {
+      router.push("/")
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Set timeout for data fetching
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Request timeout")), 15000))
+
+      const fetchPromise = async () => {
         if (planId) {
+          // Load specific plan from URL parameter
           const planDoc = await getDoc(doc(db, "recommendations", planId))
           if (planDoc.exists()) {
             const planData = planDoc.data()
             setRecommendation(planData.recommendation)
-            // Also fetch user profile for context
             const userDoc = await getDoc(doc(db, "users", user.uid))
             if (userDoc.exists()) {
               const userData = userDoc.data() as UserProfile
               setProfile(userData)
               setEditedProfile(userData)
             }
+          } else {
+            throw new Error("Investment plan not found")
           }
         } else {
-          // Normal flow - load user profile and generate recommendation
+          // Normal flow - load user profile first
           const userDoc = await getDoc(doc(db, "users", user.uid))
           if (userDoc.exists()) {
             const userData = userDoc.data() as UserProfile
             setProfile(userData)
             setEditedProfile(userData)
 
-            // Generate AI recommendation based on profile
-            const aiRecommendation = generateAIRecommendation(userData)
-            setRecommendation(aiRecommendation)
+            // Check for existing recommendations
+            const q = query(
+              collection(db, "recommendations"),
+              where("userId", "==", user.uid),
+              orderBy("createdAt", "desc"),
+              limit(1),
+            )
+
+            const querySnapshot = await getDocs(q)
+
+            if (!querySnapshot.empty) {
+              // Use the latest existing recommendation
+              const latestRec = querySnapshot.docs[0].data()
+              setRecommendation(latestRec.recommendation)
+            } else {
+              // No existing plans, generate a new one
+              const aiRecommendation = generateAIRecommendation(userData)
+              setRecommendation(aiRecommendation)
+            }
+          } else {
+            router.push("/onboarding")
+            return
           }
         }
-      } catch (error) {
-        console.error("Error fetching user data:", error)
-      } finally {
-        setLoading(false)
       }
-    }
 
+      await Promise.race([fetchPromise(), timeoutPromise])
+    } catch (error) {
+      console.error("Error fetching user data:", error)
+      setError(error instanceof Error ? error.message : "Failed to load data")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
     fetchUserData()
-  }, [user, planId])
+  }, [user, authLoading, authError, planId, router])
 
   const generateAIRecommendation = (profile: UserProfile): InvestmentRecommendation => {
     const riskLevel = profile.riskTolerance
     const age = Number.parseInt(profile.age)
-    const salary = Number.parseInt(profile.salary)
 
-    // Asset allocation based on risk tolerance and age
     let stocks, bonds, reits, commodities
 
     if (riskLevel <= 3) {
@@ -130,21 +184,51 @@ export default function DashboardPage() {
       commodities = 5 + (riskLevel - 7)
     }
 
-    const assetAllocation = [
-      { name: "Stocks", value: stocks, color: "#22c55e" },
-      { name: "Bonds", value: bonds, color: "#3b82f6" },
-      { name: "REITs", value: reits, color: "#f59e0b" },
-      { name: "Commodities", value: commodities, color: "#ef4444" },
+    const assetAllocation: AssetAllocation[] = [
+      { 
+        ticker: "VTI",
+        name: "Vanguard Total Stock Market ETF",
+        type: "ETF",
+        weight: stocks,
+        color: "#22c55e",
+        sector: "Diversified",
+        exchange: "NYSE"
+      },
+      { 
+        ticker: "BND",
+        name: "Vanguard Total Bond Market ETF",
+        type: "Bond",
+        weight: bonds,
+        color: "#3b82f6",
+        sector: "Fixed Income",
+        exchange: "NASDAQ"
+      },
+      { 
+        ticker: "VNQ",
+        name: "Vanguard Real Estate ETF",
+        type: "ETF",
+        weight: reits,
+        color: "#f59e0b",
+        sector: "Real Estate",
+        exchange: "NYSE"
+      },
+      { 
+        ticker: "GSG",
+        name: "iShares S&P GSCI Commodity-Indexed Trust",
+        type: "Commodity",
+        weight: commodities,
+        color: "#ef4444",
+        sector: "Commodities",
+        exchange: "NYSE"
+      }
     ]
 
-    // Projected growth over 10 years
     const baseReturn = 0.07 + riskLevel * 0.01
     const projectedGrowth = Array.from({ length: 11 }, (_, i) => ({
       year: i,
       value: Number.parseInt(profile.currentSavings) * Math.pow(1 + baseReturn, i),
     }))
 
-    // Risk analysis
     const riskAnalysis = [
       { category: "Market Risk", score: riskLevel * 10 },
       { category: "Inflation Risk", score: Math.max(20, 100 - riskLevel * 8) },
@@ -222,10 +306,58 @@ export default function DashboardPage() {
     }
   }
 
-  if (loading) {
+  const generateNewPlan = () => {
+    if (!profile) return
+
+    const newRecommendation = generateAIRecommendation(profile)
+    setRecommendation(newRecommendation)
+
+    toast({
+      title: "New plan generated!",
+      description: "A fresh investment recommendation has been created based on your current profile.",
+    })
+  }
+
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center gradient-bg">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading your dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error || authError) {
+    return (
+      <div className="min-h-screen gradient-bg">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8">
+          <Card className="bg-white/5 border-white/10 max-w-2xl mx-auto">
+            <CardContent className="p-8">
+              <Alert className="border-red-500/50 bg-red-500/10 mb-6">
+                <AlertCircle className="h-4 w-4 text-red-400" />
+                <AlertDescription className="text-red-300">
+                  {error || authError || "An unexpected error occurred"}
+                </AlertDescription>
+              </Alert>
+              <div className="flex justify-center space-x-4">
+                <Button
+                  onClick={() => window.location.reload()}
+                  variant="outline"
+                  className="border-white/20 hover:bg-white/10"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Retry
+                </Button>
+                <Button onClick={() => router.push("/")} className="bg-primary hover:bg-primary/90 text-black">
+                  Go Home
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     )
   }
@@ -239,7 +371,7 @@ export default function DashboardPage() {
             <CardContent className="p-8 text-center">
               <h2 className="text-2xl font-bold mb-4">Complete Your Profile</h2>
               <p className="text-gray-400 mb-6">Please complete your onboarding to see personalized recommendations.</p>
-              <Button onClick={() => (window.location.href = "/onboarding")}>Complete Profile</Button>
+              <Button onClick={() => router.push("/onboarding")}>Complete Profile</Button>
             </CardContent>
           </Card>
         </div>
@@ -414,8 +546,8 @@ export default function DashboardPage() {
                           cx="50%"
                           cy="50%"
                           outerRadius={100}
-                          dataKey="value"
-                          label={({ name, value }) => `${name}: ${value}%`}
+                          dataKey="weight"
+                          label={({ name, weight }) => `${name}: ${weight}%`}
                         >
                           {recommendation.assetAllocation.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.color} />
@@ -433,7 +565,7 @@ export default function DashboardPage() {
                           <div className="w-4 h-4 rounded-full" style={{ backgroundColor: asset.color }} />
                           <span className="font-medium">{asset.name}</span>
                         </div>
-                        <Badge variant="secondary">{asset.value}%</Badge>
+                        <Badge variant="secondary">{asset.weight}%</Badge>
                       </div>
                     ))}
                   </div>
@@ -534,6 +666,14 @@ export default function DashboardPage() {
         </Tabs>
 
         <div className="flex justify-center space-x-4 mt-8">
+          <Button
+            onClick={generateNewPlan}
+            variant="outline"
+            className="border-white/20 hover:bg-white/10 bg-transparent"
+          >
+            <Lightbulb className="w-4 h-4 mr-2" />
+            Generate New Plan
+          </Button>
           <Button onClick={() => setShowPlanDialog(true)} className="bg-primary hover:bg-primary/90 text-black">
             Save This Plan
           </Button>
