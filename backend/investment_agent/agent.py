@@ -1,4 +1,5 @@
 from google.adk.agents import SequentialAgent, Agent
+from investment_agent.helper_tool import get_stock_sentiment, get_market_data_for_assets
 from investment_agent.instructions import (
     planner_agent_instruction,
     asset_selector_agent_instruction,
@@ -9,22 +10,14 @@ from investment_agent.instructions import (
     complier_agent_instruction
 )       
 
-def get_market_data():
-    
-    # get market data from api
-    
-    
-    return {
-        "market_data": "market_data"
-    }
-
 planner_agent = Agent(
     name="PlannerAgent",
     model="gemini-2.0-flash",
     instruction=planner_agent_instruction,
     description=(
         "Planner agent that plans the investment strategy for the user."
-    )
+    ),
+    output_key="planner_agent_output"
 )
 
 asset_selector_agent = Agent(
@@ -33,7 +26,9 @@ asset_selector_agent = Agent(
     instruction=asset_selector_agent_instruction,
     description=(
         "Asset selector agent that selects the assets for the user."
-    )
+    ),
+    tools=[get_stock_sentiment],
+    output_key="asset_selector_agent_output"
 )
 
 market_analyzer_agent = Agent(
@@ -42,7 +37,9 @@ market_analyzer_agent = Agent(
     instruction=market_analyzer_agent_instruction,
     description=(
         "Market analyzer agent that analyzes the market and provides insights to the user."
-    )
+    ),
+    tools=[get_market_data_for_assets],
+    output_key="market_analyzer_agent_output"
 )
 
 portfolio_recommender_agent = Agent(
@@ -51,7 +48,8 @@ portfolio_recommender_agent = Agent(
     instruction=portfolio_recommender_agent_instruction,
     description=(
         "Portfolio recommender agent that recommends the best portfolio for the user."
-    )
+    ),
+    output_key="portfolio_recommender_agent_output"
 )
 
 explainer_agent = Agent(
@@ -60,7 +58,8 @@ explainer_agent = Agent(
     instruction=explainer_agent_instruction,
     description=(
         "Explainer agent that explains the investment strategy to the user."
-    )
+    ),
+    output_key="explainer_agent_output" 
 )
 
 graph_generator_agent = Agent(
@@ -68,8 +67,9 @@ graph_generator_agent = Agent(
     model="gemini-2.0-flash",
     instruction=graph_generator_agent_instruction,
     description=(
-        "Graph generator agent that generates the graph for the investment strategy."
-    )
+        "Graph generator agent that generates visualizations for the investment strategy. "
+    ),
+    output_key="graph_generator_agent_output"
 )
 
 complier_agent = Agent(
@@ -78,7 +78,8 @@ complier_agent = Agent(
     instruction=complier_agent_instruction,
     description=(
         "Complier agent that ensures the investment strategy complies with the correct json structure for the frontend."
-    )
+    ),
+    output_key="complier_agent_output"
 )
 
 investment_pipeline_agent = SequentialAgent(

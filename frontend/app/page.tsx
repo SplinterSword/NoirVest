@@ -15,8 +15,30 @@ export default function HomePage() {
   const router = useRouter()
   const [signingIn, setSigningIn] = useState(false)
 
+  const makeSession = async (userID: string, sessionId: string, ADK_URL: string) => {
+    const session = await fetch(`${ADK_URL}/apps/investment_agent/users/${userID}/sessions/${sessionId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!session.ok) {
+      throw new Error('Failed to create session');
+    }
+
+    const session_id = sessionId;
+    localStorage.setItem('session_id', session_id);
+    console.log(session_id);
+  }
+
   useEffect(() => {
     if (user && !loading) {
+      const userID = user?.email || 'u_123';
+      localStorage.setItem('userID', userID);
+      const sessionId = localStorage.getItem('sessionId') || 's_' + Math.random().toString(36).substr(2, 9);
+      const ADK_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || "http://localhost:8000"
+      makeSession(userID, sessionId, ADK_URL)
       router.push("/dashboard")
     }
   }, [user, loading, router])

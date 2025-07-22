@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Slider } from "@/components/ui/slider"
 import { useToast } from "@/hooks/use-toast"
 import { PlanNameDialog } from "@/components/plan-name-dialog"
+import { extractJsonFromResponse } from "@/lib/apiUtils"
 
 interface UserProfile {
   salary: string
@@ -96,7 +97,7 @@ export default function DashboardPage() {
       setError(null)
 
       // Set timeout for data fetching
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Request timeout")), 15000))
+      // const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Request timeout")), 15000))
 
       const fetchPromise = async () => {
         if (planId) {
@@ -138,7 +139,7 @@ export default function DashboardPage() {
               setRecommendation(latestRec.recommendation)
             } else {
               // No existing plans, generate a new one
-              const aiRecommendation = generateAIRecommendation(userData)
+              const aiRecommendation = await generateAIRecommendation(userData)
               setRecommendation(aiRecommendation)
             }
           } else {
@@ -148,7 +149,7 @@ export default function DashboardPage() {
         }
       }
 
-      await Promise.race([fetchPromise(), timeoutPromise])
+      await fetchPromise()
     } catch (error) {
       console.error("Error fetching user data:", error)
       setError(error instanceof Error ? error.message : "Failed to load data")
@@ -161,92 +162,61 @@ export default function DashboardPage() {
     fetchUserData()
   }, [user, authLoading, authError, planId, router])
 
-  const generateAIRecommendation = (profile: UserProfile): InvestmentRecommendation => {
-    const riskLevel = profile.riskTolerance
-    const age = Number.parseInt(profile.age)
+  const generateAIRecommendation = async (profile: UserProfile): Promise<InvestmentRecommendation> => {
+    try {
+      const ADK_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || "http://localhost:8000"
+      const userID = localStorage.getItem('userID') || 'u_123'
+      const sessionID = localStorage.getItem('session_id') || 's_123'
 
-    let stocks, bonds, reits, commodities
+      const response = await fetch(`${ADK_URL}/run`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          appName: 'investment_agent',
+          userId: userID,
+          sessionId: sessionID,
+          newMessage: {
+            role: 'user',
+            parts: [
+              {
+                text: JSON.stringify({
+                  salary: profile.salary,
+                  age: profile.age,
+                  riskTolerance: profile.riskTolerance,
+                  investmentGoals: profile.investmentGoals,
+                  currentSavings: profile.currentSavings,
+                  investmentHorizon: profile.investmentHorizon,
+                  monthlyInvestment: profile.monthlyInvestment,
+                  employmentStatus: profile.employmentStatus,
+                  dependents: profile.dependents,
+                  debtAmount: profile.debtAmount,
+                  emergencyFund: profile.emergencyFund,
+                  investmentExperience: profile.investmentExperience,
+                  email: profile.email,
+                  name: profile.name
+                })
+              }
+            ]
+          },
+          streaming: false
+        })
+      });
 
-    if (riskLevel <= 3) {
-      stocks = 30 + riskLevel * 5
-      bonds = 50 - riskLevel * 3
-      reits = 15
-      commodities = 5
-    } else if (riskLevel <= 7) {
-      stocks = 50 + riskLevel * 5
-      bonds = 35 - riskLevel * 2
-      reits = 10
-      commodities = 5
-    } else {
-      stocks = 70 + riskLevel * 3
-      bonds = 15 - (riskLevel - 7)
-      reits = 10
-      commodities = 5 + (riskLevel - 7)
-    }
-
-    const assetAllocation: AssetAllocation[] = [
-      { 
-        ticker: "VTI",
-        name: "Vanguard Total Stock Market ETF",
-        type: "ETF",
-        weight: stocks,
-        color: "#22c55e",
-        sector: "Diversified",
-        exchange: "NYSE"
-      },
-      { 
-        ticker: "BND",
-        name: "Vanguard Total Bond Market ETF",
-        type: "Bond",
-        weight: bonds,
-        color: "#3b82f6",
-        sector: "Fixed Income",
-        exchange: "NASDAQ"
-      },
-      { 
-        ticker: "VNQ",
-        name: "Vanguard Real Estate ETF",
-        type: "ETF",
-        weight: reits,
-        color: "#f59e0b",
-        sector: "Real Estate",
-        exchange: "NYSE"
-      },
-      { 
-        ticker: "GSG",
-        name: "iShares S&P GSCI Commodity-Indexed Trust",
-        type: "Commodity",
-        weight: commodities,
-        color: "#ef4444",
-        sector: "Commodities",
-        exchange: "NYSE"
+      if (!response.ok) {
+        throw new Error(`API request failed with status ${response.status}`);
       }
-    ]
 
-    const baseReturn = 0.07 + riskLevel * 0.01
-    const projectedGrowth = Array.from({ length: 11 }, (_, i) => ({
-      year: i,
-      value: Number.parseInt(profile.currentSavings) * Math.pow(1 + baseReturn, i),
-    }))
+      const output = (await response.json())[6]?.content?.parts?.[0]?.text;
+      const data = await extractJsonFromResponse(output);
 
-    const riskAnalysis = [
-      { category: "Market Risk", score: riskLevel * 10 },
-      { category: "Inflation Risk", score: Math.max(20, 100 - riskLevel * 8) },
-      { category: "Liquidity Risk", score: riskLevel * 6 },
-      { category: "Credit Risk", score: bonds * 0.8 },
-    ]
+      console.log(data);
 
-    const explanation = `Based on your risk tolerance of ${riskLevel}/10 and investment goals, we recommend a ${
-      riskLevel <= 3 ? "conservative" : riskLevel <= 7 ? "balanced" : "aggressive"
-    } portfolio. This allocation balances growth potential with risk management, considering your age of ${age} and investment horizon. The ${stocks}% stock allocation provides growth potential, while ${bonds}% in bonds offers stability. REITs and commodities add diversification to protect against inflation.`
-
-    return {
-      assetAllocation,
-      projectedGrowth,
-      riskAnalysis,
-      explanation,
-      expectedReturn: baseReturn * 100,
-      riskLevel: riskLevel <= 3 ? "Conservative" : riskLevel <= 7 ? "Moderate" : "Aggressive",
+      return data as InvestmentRecommendation;
+    } catch (error) {
+      console.error('Error generating AI recommendation:', error);
+      throw error;
     }
   }
 
@@ -288,7 +258,7 @@ export default function DashboardPage() {
       })
 
       setProfile(editedProfile)
-      const newRecommendation = generateAIRecommendation(editedProfile)
+      const newRecommendation = await generateAIRecommendation(editedProfile)
       setRecommendation(newRecommendation)
       setEditMode(false)
 
@@ -306,16 +276,30 @@ export default function DashboardPage() {
     }
   }
 
-  const generateNewPlan = () => {
+  const generateNewPlan = async () => {
     if (!profile) return
+    setLoading(true)
+    setError(null)
 
-    const newRecommendation = generateAIRecommendation(profile)
-    setRecommendation(newRecommendation)
+    try {
+      const newRecommendation = await generateAIRecommendation(profile)
+      setRecommendation(newRecommendation)
 
-    toast({
-      title: "New plan generated!",
-      description: "A fresh investment recommendation has been created based on your current profile.",
-    })
+      toast({
+        title: "New plan generated",
+        description: "A new investment plan has been created based on your profile.",
+      })
+    } catch (error) {
+      console.error('Error generating new plan:', error)
+      toast({
+        title: "Error",
+        description: "Failed to generate a new investment plan. Please try again.",
+        variant: "destructive"
+      })
+    }
+    finally {
+      setLoading(false)
+    }
   }
 
   if (authLoading || loading) {
@@ -577,7 +561,7 @@ export default function DashboardPage() {
           <TabsContent value="growth">
             <Card className="bg-white/5 border-white/10 chart-container">
               <CardHeader>
-                <CardTitle>10-Year Projected Growth</CardTitle>
+                <CardTitle>Projected Growth</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="h-80">
@@ -585,9 +569,9 @@ export default function DashboardPage() {
                     <LineChart data={recommendation.projectedGrowth}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis dataKey="year" stroke="#9CA3AF" />
-                      <YAxis stroke="#9CA3AF" tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`} />
+                      <YAxis stroke="#9CA3AF" tickFormatter={(value) => `$${value / 1000}K`} />
                       <Tooltip
-                        formatter={(value: number) => [`$${value.toLocaleString()}`, "Portfolio Value"]}
+                        formatter={(value: number) => [`$${value}`, "Portfolio Value"]}
                         labelFormatter={(label) => `Year ${label}`}
                         contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151" }}
                       />
