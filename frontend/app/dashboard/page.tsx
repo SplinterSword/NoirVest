@@ -499,7 +499,7 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm">Portfolio Value</p>
-                  <p className="text-2xl font-bold">${Number.parseInt(profile.currentSavings).toLocaleString()}</p>
+                  <p className="text-2xl font-bold">${Number.parseInt(profile.monthlyInvestment).toLocaleString()}</p>
                 </div>
                 <Target className="w-8 h-8 text-emerald-400" />
               </div>
@@ -660,10 +660,6 @@ export default function DashboardPage() {
           </Button>
           <Button onClick={() => setShowPlanDialog(true)} className="bg-primary hover:bg-primary/90 text-black">
             Save This Plan
-          </Button>
-          <Button variant="outline" className="border-white/20 hover:bg-white/10 bg-transparent">
-            <Download className="w-4 h-4 mr-2" />
-            Export PDF
           </Button>
         </div>
 

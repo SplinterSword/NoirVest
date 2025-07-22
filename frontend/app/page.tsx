@@ -180,7 +180,7 @@ export default function HomePage() {
           <div className="flex justify-center space-x-8 text-sm text-gray-400">
             <span>✓ Secure & Private</span>
             <span>✓ No Hidden Fees</span>
-            <span>✓ Expert-Backed AI</span>
+            <span>✓ Backed With AI</span>
           </div>
         </div>
       </div>

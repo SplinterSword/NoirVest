@@ -156,10 +156,6 @@ export default function HistoryPage() {
                       <Eye className="w-4 h-4 mr-2" />
                       View Details
                     </Button>
-                    <Button variant="outline" size="sm" className="border-white/20 hover:bg-white/10 bg-transparent">
-                      <Download className="w-4 h-4 mr-2" />
-                      Export PDF
-                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
