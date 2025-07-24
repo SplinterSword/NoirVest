@@ -10,7 +10,6 @@ I had the idea to build this because I recently earned some money and was like "
 
 ## 🚀 Features
 
-- **AI-Powered Investment Analysis**: Get real-time market insights and analysis using advanced AI models
 - **Personalized Portfolio Recommendations**: Receive tailored investment suggestions based on your risk profile and financial goals
 - **Multi-Agent System**: Utilizes specialized AI agents for different aspects of investment management
 - **Interactive Dashboards**: Visualize your portfolio performance and market trends with beautiful, interactive charts
