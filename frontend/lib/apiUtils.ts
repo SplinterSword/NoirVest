@@ -11,7 +11,6 @@ export async function extractJsonFromResponse(response: string): Promise<any> {
     } catch (e) {
         // If direct parsing fails, try to find and extract JSON-like content
         try {
-            // Look for JSON-like content (object or array)
             const jsonLikeMatch = jsonString.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
             if (jsonLikeMatch) {
                 return JSON.parse(jsonLikeMatch[0]);

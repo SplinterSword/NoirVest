@@ -1,0 +1,31 @@
+name: cd
+on:
+    push:
+        paths:
+            - 'backend/**'
+        branches:
+            - main
+jobs:
+    deploy:
+        name: deploy
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v2
+
+            - id: 'auth'
+              uses: 'google-github-actions/auth@v2'
+              with:
+                credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
+
+            - name: 'Set up Cloud SDK'
+              uses: 'google-github-actions/setup-gcloud@v2'
+
+            - name: 'Build and Deploy Image To Artifact Registry'
+              run: |
+                cd backend
+                gcloud builds submit --tag asia-northeast1-docker.pkg.dev/my-backends-459605/noirvest-backend-repo/noirvest-backend:latest
+
+            - name: Deploy to Cloud Run
+              run: gcloud run deploy noirvest-backend --image asia-northeast1-docker.pkg.dev/my-backends-459605/noirvest-backend-repo/noirvest-backend:latest --region asia-northeast1 --allow-unauthenticated --project my-backends-459605 --max-instances=4 --set-secrets=GOOGLE_API_KEY=NOIRVEST_GEMINI_KEY:latest,FINANCIAL_PREP_API_KEY=NOIRVEST_FINANCIAL_API_KEY:latest --set-env-vars=GOOGLE_GENAI_USE_VERTEXAI=FALSE 

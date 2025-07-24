@@ -1,4 +1,15 @@
+import os
+from typing import Dict, List, Union
 import requests
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Get API key from environment variables
+FINANCIAL_PREP_API_KEY = os.getenv('FINANCIAL_PREP_API_KEY')
+if not FINANCIAL_PREP_API_KEY:
+    raise ValueError("FINANCIAL_PREP_API_KEY not found in environment variables")
 
 def get_stock_sentiment(ticker: str) -> dict:
     """
@@ -34,8 +45,7 @@ def get_stock_sentiment(ticker: str) -> dict:
         }
     """
 
-    api_key = "WVfrB6TsRBPL0Xq3ejhdfEpTWLlfT7iN"
-    url = f"https://financialmodelingprep.com/stable/grades-consensus?symbol={ticker}&apikey={api_key}"
+    url = f"https://financialmodelingprep.com/stable/grades-consensus?symbol={ticker}&apikey={FINANCIAL_PREP_API_KEY}"
     try:
         response = requests.get(url)
         response.raise_for_status()  # Raise an exception for bad status codes
@@ -49,7 +59,7 @@ def get_stock_sentiment(ticker: str) -> dict:
         return {"error": f"Failed to parse JSON response: {str(e)}"}
 
 
-def get_market_data_for_assets(tickers: list[str]) -> dict:
+def get_market_data_for_assets(tickers: List[str]) -> Dict[str, Dict[str, List[Dict]]]:
     """
     Fetches comprehensive financial data for one or more stock tickers from the Financial Modeling Prep API.
     
@@ -105,8 +115,7 @@ def get_market_data_for_assets(tickers: list[str]) -> dict:
                            "cash-flow-statement", "shares-float", "market-capitalization", "earnings", "enterprise-value", 
                            "quote", "owners-earning", "income-statement-growth", "balance-sheet-statement-growth", 
                            "cash-flow-statement-growth", "financial-scores-growth","analyst-estimates"] 
-    api_key = "WVfrB6TsRBPL0Xq3ejhdfEpTWLlfT7iN"
-
+    api_key = FINANCIAL_PREP_API_KEY
     data = {}
     
     for ticker in tickers:

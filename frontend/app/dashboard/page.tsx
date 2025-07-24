@@ -208,10 +208,18 @@ export default function DashboardPage() {
         throw new Error(`API request failed with status ${response.status}`);
       }
 
-      const output = (await response.json())[6]?.content?.parts?.[0]?.text;
-      const data = await extractJsonFromResponse(output);
+      let temp = await response.json()
 
-      console.log(data);
+      let compilerAgentMessage = null;
+      for (let i = 0; i < temp.length; i++) {
+        if (temp[i].author === "ComplierAgent") {
+          compilerAgentMessage = temp[i];
+          break;
+        }
+      }
+
+      const compilerOutput = compilerAgentMessage?.content?.parts?.[0]?.text;
+      const data = await extractJsonFromResponse(compilerOutput);
 
       return data as InvestmentRecommendation;
     } catch (error) {
