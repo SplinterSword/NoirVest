@@ -38,7 +38,7 @@ export function Navigation() {
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center space-x-8">
             <Link href="/dashboard" className="text-xl font-bold text-primary">
-              Smart Investment Advisor
+              NoirVest
             </Link>
 
             {/* Desktop Navigation */}
